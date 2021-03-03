@@ -1,0 +1,491 @@
+---
+title: <font size="5">**OPTVR -- Walking speed change detection**</font> 
+author: <br> <font size="4"> Pawe³ Motyka (University of Warsaw) </font> <br>  *pawel.motyka@psych.uw.edu.pl* 
+date: <font size="3"> January 2020  </font>
+output: html_document
+chunk_output_type: console
+
+--- 
+
+&nbsp;
+
+<font size="4">
+**List of sections**:
+
+1. Load required packages and process the data [S1](#S1)
+2.  Derive signal detection theory (SDT) measures [S2](#S2)
+3.  Plot hit rates and false alarms [S3](#S3)
+4.  Compare SDT-measures at different conditions [S4](#S4)
+5.  Explore associations bewteen SDT-measures and confidence & anthropometric data [S5](#S5)
+
+<a name="S1"></a>
+&nbsp;
+
+#####**1. Load required packages and proprocess the data** 
+
+```{r, message=FALSE, warning= FALSE}
+
+library(dplyr)
+library(ggplot2)
+library(colorspace)
+library(scales)
+library(effsize)
+library(tidyr)
+library(psych)
+library(cowplot)
+library(ggpubr)
+library(plyr)
+library(readr)
+library(Rmisc)
+library(devtools)
+library(gghalves)
+library(coin)
+library(here)
+
+#data directory & data reading
+data_dir <- paste0(here(),"/_data")
+setwd(data_dir)
+
+# read walking speed change detection data
+df <- read.table("OPTVR_walking_speed_change_detection_data", sep = "\t", header = T)
+
+# read confidence ratings rata
+df_conf <- read.table("OPTVR_walking_speed_change_detection_conf_data", sep = "\t", header = T)
+
+# read demographic and anthropometric data
+df_sub_data <- read.table("OPTVR_determination_of_optic_flow_speed_data", sep = "\t", header = T)
+df_sub <- df_sub_data[,c(1:5)]
+df_sub <- df_sub[complete.cases(df_sub),]
+df_sub$Gender <- plyr::revalue(df_sub$Gender, replace = c("W " = "W")) #correction
+
+# classify as a hit in case of the stimulus present and "yes" response
+df$r[df$Change == "Yes" & df$Resp == "y"] <- 'hit' 
+
+# classify as a miss in case of the stimulus present and "no" response
+df$r[df$Change == "Yes" & df$Resp == "n"] <- 'miss' 
+
+# classify as a false alarm in case of the catch trial and "yes" response
+df$r[df$Change == "no" & df$Resp == "y"] <- 'fa' 
+
+# classify as a correct rejection in case of the catch trial and "no" response
+df$r[df$Change == "no" & df$Resp == "n"] <- 'cr' 
+
+# save as factor
+df$r <- factor(df$r)
+
+# remove training blocks
+df <- df[df$Block_num != 99,]
+df <- df[df$Block_num != 98,]
+
+```
+
+
+<a name="S2"></a>
+&nbsp;
+
+#####**2. Derive signal detection theory (SDT) measures** 
+
+```{r}
+
+# data subjects level
+dfs <- data.frame(ID = integer(0),
+                   hit_rate = numeric (0), #hit rate
+                   fa_rate = numeric(0), # false alarms rate
+                   s = numeric(0), # sensitivity (d')
+                   c = numeric (0), # criterion (c)
+                   hit_rate_acc = numeric (0), #acceleration blocks
+                   hit_rate_dec = numeric (0), # deceleration blocks
+                   fa_rate_acc = numeric(0),
+                   fa_rate_dec = numeric(0),
+                   s_acc = numeric(0), 
+                   s_dec = numeric(0),
+                   c_acc = numeric (0),
+                   c_dec = numeric (0)) 
+  
+  
+  for (p in unique(df$ID)) {     # LOOP PARTICIPANTS (p)
+
+      #calculate hit rate
+      hit_rate <- (length(df$r[df$r =="hit" & df$ID == p])+0.5)/(length(df$Change[df$ID == p & df$Change == "Yes"])+1)
+
+      # calculate false alarm rate
+      FA_rate <- (length(df$r[df$r =="fa" & df$ID == p])+0.5)/(length(df$Change[df$ID == p & df$Change == "no"])+1)
+    
+      # calculate sensitivity (d') [d' = Z(hit_rate) - Z(False_alarms_rate)] 
+      s <- qnorm(hit_rate) - qnorm(FA_rate) 
+      
+      # calculate criterion (c) [c = - [Z(hit_rate) + Z(False_ alarms_rate)]/2] 
+      c <- -(qnorm(hit_rate)+qnorm(FA_rate))/2 
+      
+    # calculate hit rate - acceleration
+      hit_rate_acc <- (length(df$r[df$r =="hit" & df$ID == p & df$Block_type == "speed_up"])+0.5)/(length(df$Change[df$ID == p & df$Change == "Yes" & df$Block_type == "speed_up"])+1)
+      
+      # calculate hit rate - deceleration
+       hit_rate_dec <- (length(df$r[df$r =="hit" & df$ID == p & df$Block_type == "speed_down"])+0.5)/(length(df$Change[df$ID == p & df$Change == "Yes" & df$Block_type == "speed_down"])+1)
+      
+      # false alarms - acceleration
+      FA_rate_acc <- (length(df$r[df$r =="fa" & df$ID == p & df$Block_type == "speed_up"])+0.5)/(length(df$Change[df$ID == p & df$Change == "no" & df$Block_type == "speed_up"])+1)
+      
+      # false alarms - deceleration
+       FA_rate_dec <- (length(df$r[df$r =="fa" & df$ID == p & df$Block_type == "speed_down"])+0.5)/(length(df$Change[df$ID == p & df$Change == "no" & df$Block_type == "speed_down"])+1)
+      
+      # Sensitivity (d') [d' = Z(hit_rate) - Z(False_alarms_rate)] 
+      s_acc <- qnorm(hit_rate_acc) - qnorm(FA_rate_acc)
+      s_dec <- qnorm(hit_rate_dec) - qnorm(FA_rate_dec) 
+      
+      # Criterion (c) [c = - [Z(hit_rate) + Z(False_ alarms_rate)]/2] 
+      c_acc <- -(qnorm(hit_rate_acc)+qnorm(FA_rate_acc))/2 
+      c_dec <- -(qnorm(hit_rate_dec)+qnorm(FA_rate_dec))/2 
+     
+      # create a dfframe with sensitivity and criterion measures
+      dfs[nrow(dfs)+1,] <- c(p, hit_rate, FA_rate, s, c, hit_rate_acc, hit_rate_dec, FA_rate_acc, FA_rate_dec, s_acc,s_dec,c_acc, c_dec)
+      
+  } # END: LOOP PARTICIPANTS (p)
+
+# hit and fa rates in %
+dfs$hit_rate <- dfs$hit_rate * 100
+dfs$hit_rate_acc <- dfs$hit_rate_acc * 100
+dfs$hit_rate_dec <- dfs$hit_rate_dec * 100
+dfs$fa_rate <- dfs$fa_rate * 100
+dfs$fa_rate_acc <- dfs$fa_rate_acc * 100
+dfs$fa_rate_dec <- dfs$fa_rate_dec * 100
+
+```
+
+<a name="S3"></a>
+&nbsp;
+
+#####**3. Plot hit rates and false alarms** 
+
+```{r}
+
+### ACCELERATION 
+#hit rate & fa rate
+describe(dfs$hit_rate_acc)
+describe(dfs$fa_rate_acc)
+
+## DECELERATION
+#hit rate & fa rate
+describe(dfs$hit_rate_dec)
+describe(dfs$fa_rate_dec)
+
+### plot
+
+d <- select(dfs, ID, fa_rate_acc, fa_rate_dec, hit_rate_acc, hit_rate_dec)
+
+d <- gather(d, key = variable, value = value, -"ID")
+
+d$condition <- c()
+d$measure <- c()
+  
+for (r in c(1:nrow(d))) {
+d$condition[r] <- ifelse(d$variable[r] == "hit_rate_acc" | d$variable[r] == "fa_rate_acc", "acc", "dec")
+d$variable[r] <- ifelse(d$variable[r] == "hit_rate_acc" | d$variable[r] == "hit_rate_dec", "hit_rate", "fa_rate")
+}
+
+d <- pivot_wider(d, names_from = c(variable), values_from = c(value))
+
+
+bold.text <- element_text(face = "bold", color = "black")
+
+d$jitter_fa <- runif(nrow(d), min = -1.5, max=1.5)
+d$jitter_hits <- runif(nrow(d), min = -1.5, max= 1.5)
+
+d$fa_rate_jit <- d$fa_rate + d$jitter_fa
+d$hit_rate_jit <- d$hit_rate + d$jitter_hits
+
+col1 <- darken("red3", amount = 0.1)
+col2 <- "dodgerblue4"
+
+# Create scatter plot
+fig <- ggscatter(d, x = "fa_rate_jit", y = "hit_rate_jit", color = "condition", alpha = 0.4, shape = "condition", size = "condition") + 
+border() + 
+labs(x = "False alarms (%)", y = "Hit rate (%)") +
+scale_shape_manual(values = c('acc' = 19, 'dec' = 17)) +
+scale_size_manual(values = c('acc' = 2.2, 'dec' = 2)) +
+scale_color_manual(values = c('acc' = darken(col1, amount = 0.4), 'dec' = darken(col2, amount = 0.4))) + 
+scale_y_continuous(limits= c(0, 100), breaks = c(0,25,50,75,100), expand = c(0.01,0.01)) + 
+scale_x_continuous(limits= c(0, 100), breaks = c(0,25,50,75,100), expand = c(0.01,0.01)) +
+theme(plot.margin=unit(c(7,10,7,7),"pt"), axis.text = element_text(face="bold",size=14),axis.title = element_text(face="bold",size=14, colour = "black"), axis.title.y = element_text(margin = margin(t = 0, r = 3, b = 0, l = 0)), axis.title.x =   element_text(margin = margin(t = 9.5, r = 0, b = 0, l = 0))) + geom_abline(slope=1, intercept= 0, colour = scales::alpha("gray40",0.5), lwd = 1, linetype = "dashed")
+
+
+# Marginal densities for x and y axes
+xplot <- ggdensity(d, "fa_rate", fill = "condition") + scale_x_continuous(limits= c(0, 100)) + scale_fill_manual(values = c('acc' = darken(col1, amount = 0.1), 'dec' = darken(col2, amount = 0.3))) +
+annotate("segment", x = mean(d$fa_rate[d$condition == "acc"]), xend = mean(d$fa_rate[d$condition == "acc"]), y = 0.0, yend = 0.0205, size = 1.5, colour = scales::alpha(darken(col1, amount = 0.3),0.6)) + annotate("segment", x = mean(d$fa_rate[d$condition == "dec"]), xend = mean(d$fa_rate[d$condition == "dec"]), y = 0.0, yend = 0.0248, size = 1.5, colour = scales::alpha(darken(col2, amount = 0.5),0.6))
+
+yplot <- ggdensity(d, "hit_rate", fill = "condition") +  scale_x_continuous(limits= c(0, 100)) + scale_fill_manual(values = c('acc' = darken(col1, amount =0.1), 'dec' = darken(col2, amount = 0.3))) +
+annotate("segment", x = mean(d$hit_rate[d$condition == "acc"]), xend = mean(d$hit_rate[d$condition == "acc"]), y = 0.0, yend = 0.0198, size = 1.5, colour = scales::alpha(darken(col1, amount = 0.3),0.6)) + annotate("segment", x = mean(d$hit_rate[d$condition == "dec"]), xend = mean(d$hit_rate[d$condition == "dec"]), y = 0.0, yend = 0.029, size = 1.5, colour = scales::alpha(darken(col2, amount = 0.5),0.6)) + rotate()
+
+# reduce plots
+fig <- fig + rremove("legend")
+
+yplot <- yplot + clean_theme() + rremove("legend") + theme(plot.margin=unit(c(5,0,0,0),"pt")) 
+
+
+xplot <- xplot + clean_theme() + rremove("legend") + 
+  theme(plot.margin=unit(c(0,5,0,0),"pt")) 
+
+# arrange plots
+plot_grid(xplot, NULL, fig, yplot, nrow = 2, ncol = 2, align = "hv", 
+      rel_widths = c(3, 1), rel_heights = c(1, 3))
+#export size 5 x 5.5
+
+```
+
+
+<a name="S4"></a>
+&nbsp;
+
+#####**4. Compare SDT-measures at different conditions**
+
+```{r}
+
+### Compare SDT-measures between tasks 
+
+## Sensitivity
+
+# summary statistics
+describe(dfs$s_acc)
+describe(dfs$s_dec)
+
+# test distributions
+shapiro.test(dfs$s_acc)
+shapiro.test(dfs$s_dec)
+
+# test differences
+test <- wilcoxsign_test(dfs$s_acc ~ dfs$s_dec, paired = T, distribution = "exact")
+test
+
+## Criterion
+
+# summary statistics
+describe(dfs$c_acc)
+describe(dfs$c_dec)
+
+# test distributions
+shapiro.test(dfs$c_acc)
+shapiro.test(dfs$c_dec)
+
+# test differences
+test <- wilcoxsign_test(dfs$c_acc ~ dfs$c_dec, paired = T, distribution = "exact")
+test
+
+# effect size
+test@statistic@teststatistic / sqrt(nrow(dfs))
+
+# s_both = c(dfs$s_acc, dfs$s_dec)
+# gp = c(rep(1,46), rep(2,46))
+# 
+# boxplot(s_both ~ gp, col=c("brown3", "darkorchid3"), pch=19, ylab = "Sensitivity", line = 2.5, cex.lab= 1.6)
+
+
+## Plot differences in Sensitivity
+
+y_lim_min = -0.5
+y_lim_max = 3
+
+d <- select(dfs, ID, s_acc, s_dec)
+
+d <- gather(d, key = x, value = y, -"ID")
+
+d$x[d$x == "s_acc"] <- 1
+d$x[d$x == "s_dec"] <- 2
+d$x <- as.numeric(d$x)
+d$xj <- jitter(d$x, amount=.04)
+
+fig <- ggplot(data = d, aes(y = y)) +
+  
+   #Add geom_() objects
+   geom_point(data = d %>% filter(x =="1"), aes(x = xj), color =  darken(col1, amount =0.1), size = 1.5, alpha = .5) +
+   geom_point(data = d %>% filter(x =="2"), aes(x = xj), color = darken(col2, amount = 0.3), size = 1.5, alpha = .5) +
+   geom_line(aes(x = xj, group = ID), color = 'lightgray', alpha = .5) +
+  
+   geom_half_boxplot( data = d %>% filter(x=="1"), aes(x=x, y = y), position = position_nudge(x = -.25), side = "r",outlier.shape = NA, center = TRUE, errorbar.draw = TRUE, width = .3, fill =  darken(col1, amount =0.1), alpha = .5) +
+   
+   geom_half_boxplot(data = d %>% filter(x=="2"), aes(x=x, y = y), position = position_nudge(x = .15), side = "r",outlier.shape = NA, center = TRUE, errorbar.draw = TRUE, width = .3, fill = darken(col2, amount = 0.3), alpha = .5) +
+  
+   geom_half_violin(data = d %>% filter(x=="1"),aes(x = x, y = y), position = position_nudge(x = 1.4), side = "r", fill =  darken(col1, amount =0.1), alpha = .5, trim = FALSE) +
+ 
+   geom_half_violin(data = d %>% filter(x=="2"),aes(x = x, y = y), position = position_nudge(x = .4), side = "r", fill = darken(col2, amount = 0.3), alpha = .5, trim = FALSE) +
+  
+  #Define additional settings
+   scale_x_continuous(breaks=c(1,2), labels=c("Acceleration", "Deceleration"), limits=c(0.5,3)) +
+   xlab("Condition") + ylab("Sensitivity (d')") +
+   theme_classic()+
+   coord_cartesian(ylim=c(y_lim_min, y_lim_max)) + theme(plot.margin=unit(c(7,10,7,7),"pt"), axis.text.x = element_text(size=14, colour = "black"), axis.text.y = element_text(vjust = 0.2, face="bold",size=15, colour = "black"), axis.title.y = element_text(margin = margin(t = 0, r = 8, b = 0, l = 0), face="bold",size=17, colour = "black"), axis.title.x = element_text(hjust=0.37, margin = margin(t = 7, r = 0, b = 0, l = 0), face="bold",size= 14, colour = "black"))
+
+fig
+# export 3.5 x 4.5 each
+
+## Plot differences in Criterion
+
+y_lim_min = -1.4
+y_lim_max = 2
+
+d <- select(dfs, ID, c_acc, c_dec)
+
+d <- gather(d, key = x, value = y, -"ID")
+
+d$x[d$x == "c_acc"] <- 1
+d$x[d$x == "c_dec"] <- 2
+
+d$x <- as.numeric(d$x)
+d$xj <- jitter(d$x, amount=.04)
+
+fig <- ggplot(data = d, aes(y = y)) +
+  
+   #Add geom_() objects
+   geom_point(data = d %>% filter(x =="1"), aes(x = xj), color =  darken(col1, amount =0.1), size = 1.5, alpha = .5) +
+   geom_point(data = d %>% filter(x =="2"), aes(x = xj), color = darken(col2, amount = 0.3), size = 1.5, alpha = .5) +
+   geom_line(aes(x = xj, group = ID), color = 'lightgray', alpha = .5) +
+  
+   geom_half_boxplot( data = d %>% filter(x=="1"), aes(x=x, y = y), position = position_nudge(x = -.25), side = "r",outlier.shape = NA, center = TRUE, errorbar.draw = TRUE, width = .3, fill =  darken(col1, amount =0.1), alpha = .5) +
+   
+   geom_half_boxplot(data = d %>% filter(x=="2"), aes(x=x, y = y), position = position_nudge(x = .15), side = "r",outlier.shape = NA, center = TRUE, errorbar.draw = TRUE, width = .3, fill = darken(col2, amount = 0.3), alpha = .5) +
+  
+   geom_half_violin(data = d %>% filter(x=="1"),aes(x = x, y = y), position = position_nudge(x = 1.4), side = "r", fill =  darken(col1, amount =0.1), alpha = .5, trim = FALSE) +
+ 
+   geom_half_violin(data = d %>% filter(x=="2"),aes(x = x, y = y), position = position_nudge(x = .4), side = "r", fill = darken(col2, amount = 0.3), alpha = .5, trim = FALSE) +
+  
+  #Define additional settings
+   scale_x_continuous(breaks=c(1,2), labels=c("Acceleration", "Deceleration"), limits=c(0.5,3)) +
+   xlab("Condition") + ylab("Criterion (C)") +
+   theme_classic()+
+   coord_cartesian(ylim=c(y_lim_min, y_lim_max)) + theme(plot.margin=unit(c(7,10,7,7),"pt"), axis.text.x = element_text(size=14, colour = "black"), axis.text.y = element_text(face="bold",size=15, colour = "black"), axis.title.y = element_text(margin = margin(t = 0, r = 1, b = 0, l = 0), face="bold",size=17.5, colour = "black"), axis.title.x = element_text(hjust=0.37, margin = margin(t = 7, r = 0, b = 0, l = 0), face="bold",size= 14, colour = "black"))
+
+fig
+# export 3.5 x 4.5 each
+
+
+## Sensitivity 
+shapiro.test(dfs$s_acc)
+shapiro.test(dfs$s_dec)
+cor.test(dfs$s_acc, dfs$s_dec, method = "spearman", exact = F)
+cor.test(dfs$s_acc, dfs$s_dec, method = "pearson")
+
+# Plot
+bold.text <- element_text(face = "bold", color = "black")
+Figure_sensitivity <- ggplot(data = dfs, aes(x = s_acc, y = s_dec)) + geom_smooth(col = "grey8", method = "lm", level=0.95, alpha = 0.5) +  geom_point(col = "grey 15", alpha = 0.5, size = 3, shape = 19) +   labs(x = "d' - acceleration", y = "d' - deceleration") + scale_fill_manual() + theme_classic() +  theme(axis.text=element_text(size=15, colour = "black", face="bold"),  axis.title=element_text(size=17), axis.title.y = element_text(margin = margin(t = 0, r = 3, b = 0, l = 0)), axis.title.x =   element_text(margin = margin(t = 5, r = 0, b = 0, l = 0))) + theme(axis.title = bold.text)
+Figure_sensitivity
+
+## Criterion
+shapiro.test(dfs$c_acc)
+shapiro.test(dfs$c_dec)
+cor.test(dfs$c_acc, dfs$c_dec, method = "spearman", exact = F)
+
+# Plot
+bold.text <- element_text(face = "bold", color = "black")
+Figure_criterion <- ggplot(data = dfs, aes(x = c_acc, y = c_dec)) +  geom_smooth(col = "grey8", method = "lm", level=0.95, alpha = 0.5) + geom_point(col = "grey 15", alpha = 0.5, size = 3, shape = 19) + labs(x = "C - acceleration", y = "C - deceleration") +  scale_fill_manual() +  theme_classic() +  theme(axis.text=element_text(size=15, colour = "black", face="bold"),  axis.title=element_text(size=17), axis.title.y = element_text(margin = margin(t = 0, r = 3, b = 0, l = 0)), axis.title.x =   element_text(margin = margin(t = 5, r = 0, b = 0, l = 0))) + theme(axis.title = bold.text)
+Figure_criterion
+# 3.5 x 4.1
+
+```
+
+
+
+<a name="S5"></a>
+&nbsp;
+
+#####**5. Explore associations between SDT-measures and other variables** 
+
+
+```{r}
+
+### Merge with confidence ratings
+dfs <- merge(dfs, df_conf, by = "ID")
+dfs<- plyr::rename(dfs, replace = c("conf_speed_up" = "conf_acc"))
+dfs<- plyr::rename(dfs, replace = c("conf_speed_down" = "conf_dec"))
+df_sub <- unique(df_sub)
+dfs <- merge(dfs, df_sub, by = "ID")
+dfs$conf_acc_dec_mean <- (dfs$conf_acc + dfs$conf_dec)/2
+
+# summary statistics 
+describe(dfs$conf_dec)
+describe(dfs$conf_acc)
+
+# test distributions
+shapiro.test(dfs$conf_dec)
+shapiro.test(dfs$conf_acc)
+
+# test differences
+test <- wilcoxsign_test(dfs$conf_dec ~ dfs$conf_acc, paired = T, distribution = "exact")
+test
+
+# effect size
+test@statistic@teststatistic / sqrt(nrow(dfs))
+
+# correlation between confidence ratings
+cor.test(dfs$conf_acc, dfs$conf_dec, method = "spearman", exact = F)
+#scatter.smooth(dfs$conf_acc, dfs$conf_dec)
+
+### correlation between SDT-measures and confidence ratings
+
+cor.test(dfs$s, dfs$conf_acc_dec_mean, method = "spearman", exact = F)
+#scatter.smooth(dfs$s, dfs$conf_acc_dec_mean)
+
+cor.test(dfs$s_acc, dfs$conf_acc, method = "spearman", exact = F)
+#scatter.smooth(dfs$s_acc, dfs$conf_acc)
+
+cor.test(dfs$s_dec, dfs$conf_dec, method = "spearman", exact = F)
+#scatter.smooth(dfs$s_dec, dfs$conf_dec)
+
+cor.test(dfs$c_acc, dfs$conf_acc, method = "spearman", exact = F)
+#scatter.smooth(dfs$c_acc, dfs$conf_acc)
+
+cor.test(dfs$c_dec, dfs$conf_dec, method = "spearman", exact = F)
+#scatter.smooth(dfs$c_dec, dfs$conf_dec)
+
+
+## correlation between SDT-measures and anthropometric variables
+dfs$bmi <- dfs$Weight / ((dfs$Height)/100)^2
+describe(dfs$bmi)
+
+shapiro.test(dfs$bmi)
+shapiro.test(dfs$s)
+
+cor.test(dfs$bmi, dfs$s, method = "spearman", exact = F)
+#scatter.smooth(dfs$bmi, dfs$s)
+
+cor.test(dfs$Height, dfs$s, method = "spearman", exact = F)
+#scatter.smooth(dfs$Height, dfs$s)
+
+cor.test(dfs$Weight, dfs$s, method = "spearman", exact = F)
+#scatter.smooth(dfs$Weight, dfs$s)
+
+## BMI between genders
+shapiro.test(dfs$bmi[dfs$Gender == "W"])
+shapiro.test(dfs$bmi[dfs$Gender == "M"])
+t.test(dfs$bmi[dfs$Gender == "M"], dfs$bmi[dfs$Gender == "W"], paired = T)
+effsize::cohen.d(dfs$bmi[dfs$Gender == "M"], dfs$bmi[dfs$Gender == "W"], paired = T)
+describe(dfs$bmi[dfs$Gender == "M"])
+describe(dfs$bmi[dfs$Gender == "W"])
+
+# correlations within sub-samples
+shapiro.test(dfs$s[dfs$Gender == "M"])
+cor.test(dfs$bmi[dfs$Gender == "M"], dfs$s[dfs$Gender == "M"], method = "spearman", exact = F)
+
+shapiro.test(dfs$s[dfs$Gender == "W"])
+cor.test(dfs$bmi[dfs$Gender == "W"], dfs$s[dfs$Gender == "W"], method = "spearman", exact = F)
+
+## Overall sensitivity between genders
+# test distributions
+shapiro.test(dfs$s[dfs$Gender == "W"])
+shapiro.test(dfs$s[dfs$Gender == "M"])
+
+# statistical summary
+describe(dfs$s[dfs$Gender == "W"])
+describe(dfs$s[dfs$Gender == "M"])
+
+# test differences
+wilcox.test(dfs$s[dfs$Gender == "W"], dfs$s[dfs$Gender == "M"], exact = F, paired = F)
+
+# sample data
+describe(dfs$Age)
+length(dfs$ID[dfs$Gender == "W"])
+length(dfs$ID[dfs$Gender == "M"])
+
+#write.table(dfs, file = "OPTVR_walking_speed_change_detection_output", sep = "\t")
+
+```
+
+
