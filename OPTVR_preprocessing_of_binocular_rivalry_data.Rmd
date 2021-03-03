@@ -1,0 +1,246 @@
+---
+title: <font size="5">**OPTVR -- Preprocessing of binocular rivalry data**</font> 
+author: <br> <font size="4"> Pawel Motyka (University of Warsaw) </font> <br>  *pawel.motyka@psych.uw.edu.pl* 
+date: <font size="3"> January 2020  </font>
+output: html_document
+chunk_output_type: console
+
+--- 
+
+&nbsp;
+
+<font size="4">
+**List of sections**:
+
+1. Read and preprocess the raw data [S1](#S1)
+2. Derive durations of individual percepts [S2](#S2)
+3. Derive crucial outcome measures for each subject and block [S3](#S3)
+
+<a name="S1"></a>
+&nbsp;
+
+#####**1. Read and preprocess the raw data**  
+
+```{r, results = "hide", message = FALSE, warning = FALSE}
+
+library(here)
+library(dplyr)
+library(lubridate)
+library(plyr) 
+library(psych)
+library(tidyr)
+
+data_dir <- paste0(here::here(),"/_data")
+setwd(data_dir)
+
+# specify ID list
+ID_list <- c(1:10,12,14:15,18,19,21:25,27:43,46)
+
+data <- NULL
+for (p in ID_list) { ifelse(p < 10, ID_str <- paste('0', p, sep = ''), ID_str <- p)  
+# read individual dataframes within the loop
+log <- read.csv(paste('OPTVR_', ID_str, '_log.csv', sep=''), header = TRUE, skip = 2, sep = ",") 
+log$ID <- ID_str
+data <- rbind(data, log)
+}
+
+# Encode timing in seconds
+data <- as.data.frame(data)
+data$time <- period_to_seconds(hms(data$TimeStampLog))
+data$time <- do.call(paste, c(data[c("time")], sep = ""))
+options(digits = 8)
+data$time <- as.numeric(as.character(data$time))
+data$ID <- as.numeric(as.character(data$ID))
+
+# Test whether ID number is even or odd (different buttons used to indicate seen colors)
+is.even <- function(x) x %% 2 == 0
+data$Is_even <- is.even(data$ID)
+
+# Encode perceived colors
+for ( i in unique(data$ID[data$Is_even == FALSE])) { # LOOP PARTICIPANTS (i)
+  
+data$p_color[data$rightButtonLog == "1" & data$leftButtonLog == "0" & data$ID == i] <- "Red"
+data$p_color[data$rightButtonLog == "0" & data$leftButtonLog == "1" & data$ID == i] <- "Green"
+data$p_color[data$rightButtonLog == "0" & data$leftButtonLog == "0" & data$ID == i] <- "non"
+data$p_color[data$rightButtonLog == "1" & data$leftButtonLog == "1" & data$ID == i] <- "non"
+} # END: LOOP PARTICIPANTS
+
+for ( i in unique(data$ID[data$Is_even == TRUE])) { # LOOP PARTICIPANTS (i)
+
+data$p_color[data$rightButtonLog == "1" & data$leftButtonLog == "0" & data$ID == i] <- "Green"
+data$p_color[data$rightButtonLog == "0" & data$leftButtonLog == "1" & data$ID == i] <- "Red"
+data$p_color[data$rightButtonLog == "0" & data$leftButtonLog == "0" & data$ID == i] <- "non"
+data$p_color[data$rightButtonLog == "1" & data$leftButtonLog == "1" & data$ID == i] <- "non"
+}  # END: LOOP PARTICIPANTS
+
+# remove breaks from dataframe
+data <- data[data$blockLog != "Interim",]
+
+# Encode perceived optic flow
+data$p_opticflow[data$forwardEyeColorLog == "Red" & data$p_color == "Red"] <- "forward"
+data$p_opticflow[data$forwardEyeColorLog == "Red" & data$p_color == "Green"] <- "static"
+data$p_opticflow[data$forwardEyeColorLog == "Red" & data$p_color == "non"] <- "non"
+data$p_opticflow[data$forwardEyeColorLog == "Green" & data$p_color == "Green"] <- "forward"
+data$p_opticflow[data$forwardEyeColorLog == "Green" & data$p_color == "Red"] <- "static"
+data$p_opticflow[data$forwardEyeColorLog == "Green" & data$p_color == "non"] <- "non"
+
+```
+
+<a name="S2"></a>
+&nbsp;
+
+#####**2. Derive durations of individual percepts** 
+
+```{r, results = "hide", message = FALSE, warning = FALSE}
+
+# ID list
+sub_list <- unique(data$ID)
+
+data_d =NULL
+
+# loop over the participants: 
+for (s in ID_list) { #  # LOOP START
+  
+block_list <- unique(data$blockLog[data$ID == s])
+
+for (i in block_list) {
+
+df <- data[data$ID == s & data$blockLog == i,]
+
+# for each response (button presses and mixed percepts) derive the start and end point
+df = df %>%
+  mutate(groupChanged = (p_opticflow != lag(p_opticflow, default = p_opticflow[1]))
+         , toCutBy = cumsum(groupChanged)) %>%
+  group_by(toCutBy) %>%
+slice(c(1, n()))
+
+# for each response calculate its duration
+#http://r.789695.n4.nabble.com/lagging-over-consecutive-pairs-of-rows-in-dataframe-td4729833.html
+odds <- (seq_len(nrow(df)) %% 2) == 1 
+df_durations <- data.frame(df[odds,c(1:11,12, 14:17)], df[!odds,13] - df[odds,13]) 
+# note that the interval (~1/40 of sec) between one type of response and the next one is not assigned into any of these two possible response durations
+
+data_d=rbind(data_d,df_durations)
+
+}
+} # LOOP ID
+
+# in very rare cases of super-short button presses (sigle row both as the start and endopoint) assign a plausible (non-zero) duration given the current sampling rate (i.e. 1/20 s)
+sampling_rate_per_sec <- 20
+data_d$time[data_d$time == 0] <- 1/sampling_rate_per_sec
+
+data_d <- plyr::rename(data_d, replace = c("time" = "duration"))
+data_d <- plyr::rename(data_d, replace = c("WalkingSpeedLog" = "walking"))
+data_d <- plyr::rename(data_d, replace = c("OpticFlowSpeedLog" = "of_speed"))
+data_d <- plyr::rename(data_d, replace = c("blockLog" = "block"))
+
+#write.table(data_d, file = "OPTVR_preprocessed_full_BR_data", sep = "\t")
+
+```
+
+<a name="S3"></a>
+&nbsp;
+
+#####**3. Derive crucial outcome measures for each subject and block**
+
+
+```{r, results = "hide", message = FALSE, warning = FALSE}
+
+#data_d <- read.table("OPTVR_preprocessed_full_BR_data", header = TRUE, sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
+
+# get full alterations for each ID
+data_alt_blocks <- data.frame(ID = integer(0),
+                      block = integer(0),
+                      full_alterations = integer(0),
+                      alterations= integer(0))
+
+sub_list <- unique(data_d$ID)
+data_alt <- data_d
+
+for (s in sub_list) {
+  
+block_list <- unique(data_alt$block[data_alt$ID == s])
+
+for (b in block_list) {
+ 
+df <- data_alt[data_alt$ID == s & data_alt$block == b,]
+
+if (nrow(df) > 1) {ds <- df[df$p_opticflow != "non",]} # remove mixed percepts (for simplicity), but leave them if only mixed percepts were observed within a given block
+
+alterations<- nrow(ds)
+
+# get the number of full perceptual transitions (+ create two rows with the same timestamps for rare super short [single-row] presses) 
+ds = ds %>%
+  mutate(groupChanged = (p_opticflow != lag(p_opticflow, default = p_opticflow[1]))
+         , toCutBy = cumsum(groupChanged)) %>%
+  group_by(toCutBy) %>%
+slice(c(1, n()))
+
+full_alterations <- max(ds$toCutBy)
+
+data_alt_blocks[nrow(data_alt_blocks)+1,] <- c(s, b, full_alterations, alterations)  
+}
+}
+
+data_alt_blocks$full_alterations <- as.numeric(as.character(data_alt_blocks$full_alterations))
+
+data_alt_blocks$alterations<- as.numeric(as.character(data_alt_blocks$alterations))
+
+## Strong correlation between return transitions and full transitions (blocks level)
+#scatter.smooth(data_alt_blocks$r_alterations, data_alt_blocks$full_alterations)
+
+# summarize for IDs
+data_alt_ID <- data_alt_blocks %>%
+  group_by(ID) %>%
+  dplyr::summarize(alterations = mean(full_alterations), alterations= mean(alterations)) 
+## Strong correlation between return transitions and full alterations (ID)
+#scatter.smooth(data_alt_ID$r_alterations, data_alt_ID$alterations)
+
+# Standardize the mean alteration rate
+data_alt_ID$Z_value <- (data_alt_ID$alterations - mean(data_alt_ID$alterations))/sd(data_alt_ID$alterations)
+
+## Optional: to encode all possible response categories
+#data_d <- data_d %>% mutate(congruency = case_when(walking == "Slow" & of_speed == "Slow" & p_opticflow == "forward" ~ "optimal_slow", walking == "Fast" & of_speed == "Fast" & p_opticflow == "forward" ~ "optimal_fast", walking == "Fast" & of_speed == "Slow" & p_opticflow == "forward" ~ "nonoptimal_slow", walking == "Slow" & of_speed == "Fast" & p_opticflow == "forward" ~ "nonoptimal_fast", walking == "Slow" & of_speed == "Slow" & p_opticflow == "static" ~ "static_vs_slow_s", walking == "Fast" & of_speed == "Fast" & p_opticflow == "static" ~ "static_vs_fast_f", walking == "Fast" & of_speed == "Slow" & p_opticflow == "static" ~ "static_vs_slow_f", walking == "Slow" & of_speed == "Fast" & p_opticflow == "static" ~ "static_vs_fast_s"))
+
+# Aggregated durations per subject
+df <- data_d %>%
+  group_by(ID, walking, of_speed, p_opticflow, block) %>%
+  dplyr:::summarize(duration = sum(duration)) %>% ungroup() %>% complete(ID, block, p_opticflow)  
+
+df$duration[is.na(df$duration)] <- 0 # put 0 instead of missing value if paricular responses were not observed
+
+# insert proper factor levels (as summarize & complete functions introduce NAs in case of non-observed [i.e. 0 ms] durations for some percepts in some blocks)
+df$walking[df$block == 1 | df$block == 3 | df$block == 5 | df$block == 7 | df$block == 9 | df$block == 11 | df$block == 13 | df$block == 15] <- "Slow"
+df$walking[df$block == 2 | df$block == 4 | df$block == 6 | df$block == 8 | df$block == 10 | df$block == 12 | df$block == 14 | df$block == 16] <- "Fast"
+
+df$of_speed[df$block == 1 | df$block == 2 | df$block == 3 | df$block == 4 | df$block == 5 | df$block == 6 | df$block == 7 | df$block == 8] <- "Slow"
+df$of_speed[df$block == 9 | df$block == 10 | df$block == 11 | df$block == 12 | df$block == 13 | df$block == 14 | df$block == 15 | df$block == 16] <- "Fast"
+
+df$eye[df$block == 1 | df$block == 2 | df$block == 3 | df$block == 4 | df$block == 9 | df$block == 10 | df$block == 11 | df$block == 12] <- "left"
+df$eye[df$block == 5 | df$block == 6 | df$block == 7 | df$block == 8 | df$block ==  13 | df$block == 14 | df$block == 15 | df$block == 16] <- "right"
+
+df$color[df$block == 1 | df$block == 2 | df$block == 7 | df$block == 8 | df$block == 9 | df$block == 10 | df$block == 15 | df$block == 16] <- "red"
+df$color[df$block == 3 | df$block == 4 | df$block == 5 | df$block == 6 | df$block == 11 | df$block == 12 | df$block == 13 | df$block == 14] <- "green"
+
+#get a total duration of all response classes
+d_tot <- data_d %>%
+  group_by(ID, walking, of_speed, block) %>%
+  dplyr:::summarize(total_time = sum(duration)) 
+
+# calculate mixed percepts rate in % (duration (in s)/total time (in s))
+df <- merge(df, d_tot, by = c("ID", "walking", "of_speed", "block"))
+df$duration <- (df$duration / df$total_time) * 100
+df <- df[,c(1:8)]
+df <- merge(df, data_alt_blocks, by = c("ID","block"))
+
+d<- spread(df, key = p_opticflow  , value = duration)
+
+data_perc_dur <- data_d[data_d$p_opticflow != "non",]
+dperc <- data_perc_dur %>% group_by(ID,block) %>% dplyr::summarize(mean_perc_dur = mean(duration))
+
+data_cons <- merge(d, dperc, by = c("ID", "block"), all.x = T)
+data_cons$mean_perc_dur[is.na(data_cons$mean_perc_dur)] <- 0
+
+#write.table(data_cons, file = "OPTVR_consolidated_BR_data.csv" )
+
+```
