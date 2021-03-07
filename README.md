@@ -1,4 +1,4 @@
-## The effects of walking speed on perceptual awareness for optimally- and non-optimally paced optic flows
+## Perceptual awareness of optic flows paced optimally and non-optimally to walking speed
 
 Paweł Motyka<sup>1</sup>, Zuzanna Kozłowska<sup>1</sup>, Piotr Litwin<sup>1</sup>
 <br/>
