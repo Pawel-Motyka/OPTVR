@@ -1,0 +1,841 @@
+---
+title: <font size="5">**OPTVR -- Main Analysis**</font> 
+author: <br> <font size="4"> Pawe³ Motyka (University of Warsaw) </font> <br>  *pawel.motyka@psych.uw.edu.pl* 
+date: <font size="3"> April 2020  </font>
+output: html_document
+chunk_output_type: console
+
+--- 
+
+&nbsp;
+
+<font size="4">
+**List of sections**:
+
+1. Load the required packages and the preprocessed data [S1](#S1)
+2. Automated detection of outliers [S2](#S2)
+3. Perform exclusions [S3](#S3)
+4. Control comparisons: mixed percepts and perceptual transitions [S4](#S4)
+5. Testing the main hypothesis [S5](#S5)
+6. Perceptual awareness for slower optic flows (planned comparison 1) [S6](#S6)
+7. Perceptual awareness for faster optic flows (planned comparison 2) [S7](#S7)
+8. Relation between optimality effects and proprioceptive sensitivity [S8](#S8)
+9. Relation between optimality effects and performance in determination of optic flow speeds [S9](#S9)
+
+<a name="S1"></a>
+&nbsp;
+
+#####**1. Load the required packages and the preprocessed data** 
+
+
+```{r, message = FALSE, warning = FALSE}
+
+# load required libraries
+library(dplyr, warn.conflicts = FALSE, quietly=TRUE)
+library(effsize, warn.conflicts = FALSE, quietly=TRUE)
+library(psych, warn.conflicts = FALSE, quietly=TRUE)
+library(lm.beta, warn.conflicts = FALSE, quietly=TRUE)
+library(ggplot2, warn.conflicts = FALSE, quietly=TRUE)
+library(scales, warn.conflicts = FALSE, quietly=TRUE)
+library(lme4, warn.conflicts = FALSE, quietly=TRUE)
+library(tidyr, warn.conflicts = FALSE, quietly=TRUE)
+library(afex, warn.conflicts = FALSE, quietly=TRUE)
+library(plyr, warn.conflicts = FALSE, quietly=TRUE)
+library(emmeans, warn.conflicts = FALSE, quietly=TRUE)
+library(colorspace, warn.conflicts = FALSE, quietly=TRUE)
+library(here, warn.conflicts = FALSE, quietly=TRUE)
+library(sjPlot, warn.conflicts = FALSE, quietly=TRUE)
+library(gghalves, warn.conflicts = FALSE, quietly=TRUE)
+library(extremevalues, warn.conflicts = FALSE, quietly=TRUE)
+library(Rmisc, warn.conflicts = FALSE, quietly=TRUE)
+library(coin, warn.conflicts = FALSE, quietly=TRUE)
+library(MASS, warn.conflicts = FALSE, quietly=TRUE)
+
+#options(width=100)
+
+# set working directory
+data_dir <- paste0(here(),"/_data")
+setwd(data_dir)
+
+# load the full binocular rivalry data (button-presses-level)
+data_d <- read.table("OPTVR_preprocessed_full_BR_data", header = TRUE, sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
+
+# load the consolidated binouclar rivalry data (blocks-level)
+dt <- read.table("OPTVR_consolidated_BR_data.csv",header = TRUE, sep = " ", fill = TRUE, stringsAsFactors = FALSE)
+
+# load the confidence ratings in binocular rivalry task
+d_confidence <- read.table("OPTVR_confidence_BR_data.csv",header = TRUE, sep = " ", fill = TRUE, stringsAsFactors = FALSE)
+
+# load the walking speed change detection data
+dt_walking <- read.table("OPTVR_walking_speed_change_detection_output", header = TRUE, sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
+
+# load the determination of optimal optic flow speeds data
+dt_speed <- read.table("OPTVR_determination_of_optic_flow_speed_output", header = TRUE, sep = ",", fill = TRUE, stringsAsFactors = FALSE)
+dt_speed <- dt_speed[c(1:7,14,18:22)] # select crucial variables
+
+
+```
+
+<a name="S2"></a>
+&nbsp;
+
+#####**2. Automated detection of outliers** 
+
+```{r}
+
+#(1)# Full perceptual transitions
+out_lim <- getOutliers(dt$full_alterations, distribution = "lognormal") 
+f_alt_cutoff_left <- out_lim$limit[1]
+f_alt_cutoff_left # left cutoff
+f_alt_cutoff_right <- out_lim$limit[2]  
+f_alt_cutoff_right  # right cutoff
+
+# plot full alterations across blocks
+hist(dt$full_alterations, prob = F, breaks = 60, xlab =  expression(bold("Full perceptual transitions")), ylab = expression(bold("Count")), col = "gray90", xaxt = "n", main = "")
+# add density line
+distribution <- density(dt$full_alterations, adjust = 0.8)
+distribution$y <- distribution$y * 600
+lines(distribution,  col= scales::alpha("dodgerblue4", 0.6), lwd = 1.5)
+axis(1, at =seq(0, 64, 2), las=2)
+# add cutoffs
+abline(v=f_alt_cutoff_left, col=scales::alpha("darkorange2",0.7), lwd = 2) 
+abline(v=f_alt_cutoff_right, col=scales::alpha("darkorange2",0.7), lwd = 2) 
+# export size: 3 x 8
+
+#(2)# All alterations (full and return transitions)
+out_lim <- getOutliers(dt$alterations, distribution = "lognormal")
+alt_cutoff_left <- out_lim$limit[1]
+alt_cutoff_left # left cutoff
+alt_cutoff_right <- out_lim$limit[2]
+alt_cutoff_right # right cutoff
+
+# plot all alterations across blocks
+hist(dt$alterations, prob = F, breaks = 150, xlab =  expression(bold("All perceptual transitions")), ylab = expression(bold("Count")), col = "gray90", xaxt = "n", main = "")
+# add density line
+distribution <- density(dt$alterations, adjust = 0.8)
+distribution$y <- distribution$y * 600
+lines(distribution,  col=scales::alpha("dodgerblue4", 0.6), lwd = 1.5)
+axis(1, at =seq(0, 165, 5), las=2)
+# add cutoffs
+abline(v=alt_cutoff_left, col=scales::alpha("darkorange2",0.7), lwd = 2) 
+abline(v=alt_cutoff_right, col=scales::alpha("darkorange2",0.7), lwd = 2)
+# export size: 3 x 8
+
+#(3)# Mean duration of percepts
+out_lim <- getOutliers(dt$mean_perc_dur, distribution = "lognormal")
+perc_cutoff_left <- out_lim$limit[1]
+perc_cutoff_left # left cutoff
+perc_cutoff_right <- out_lim$limit[2]
+perc_cutoff_right # right cutoff
+
+# plot mean duration of percepts across blocks
+hist(dt$mean_perc_dur, prob = F, breaks = 250, xlim = c(0,22), xlab =  expression(bold("Mean duration of exclusive percepts (s)")), ylab = expression(bold("Count")), col = "gray90", xaxt = "n", main = "")
+# add density line
+distribution <- density(dt$mean_perc_dur, adjust = 0.8)
+distribution$y <- distribution$y * 120
+lines(distribution,  col=scales::alpha("dodgerblue4", 0.6), lwd = 1.5)
+axis(1, at =seq(0, 22, 1), las=2)
+# add cutoffs
+abline(v=perc_cutoff_left, col=scales::alpha("darkorange2",0.7), lwd = 2)
+abline(v=perc_cutoff_right, col=scales::alpha("darkorange2",0.7), lwd = 2)
+# export size: 3 x 8
+
+## Specify outliers with respect to different criteria
+dt$f_alt_out[dt$full_alterations < f_alt_cutoff_left] <- "outlier"
+dt$f_alt_out[dt$full_alterations > f_alt_cutoff_right] <- "outlier"
+
+dt$alt_out[dt$alterations < alt_cutoff_left] <- "outlier"
+dt$alt_out[dt$alterations > alt_cutoff_right] <- "outlier"
+
+dt$perc_out[dt$mean_perc_dur < perc_cutoff_left] <- "outlier"
+dt$perc_out[dt$mean_perc_dur > perc_cutoff_right] <- "outlier"
+
+dt$out[dt$f_alt_out == "outlier" | dt$alt_out == "outlier" | dt$perc_out == "outlier"] <- "outlier"
+
+## Sum of outliers
+outliers_tot <- count(dt$out[dt$out == "outlier"])
+(outliers_tot$freq[1]/nrow(dt)) * 100 # % of blocks
+
+# Outliers split by category:
+outliers_f_alt <- count(dt$out[dt$f_alt_out == "outlier"])
+(outliers_f_alt$freq[1]/nrow(dt)) * 100 # % of blocks
+
+outliers_alt <- count(dt$out[dt$alt_out == "outlier"])
+(outliers_alt$freq[1]/nrow(dt)) * 100 # % of blocks
+
+outliers_perc <- count(dt$out[dt$perc_out == "outlier"])
+(outliers_perc$freq[1]/nrow(dt)) * 100 # % of blocks
+
+```
+
+<a name="S3"></a>
+&nbsp;
+
+#####**3. Perform exclusions** 
+
+```{r}
+
+# temporary data frame
+dt_temp <- dt 
+
+# list of outlying blocks
+db <- dt[!is.na(dt$out),] 
+
+# create a new column
+db$block_paired <- c(1:nrow(db)) 
+
+# specify blocks with the same visual stimulation but opposite walking speed 
+for (i in 1:nrow(db)) {
+if(db$block[i] == 1) {db$block_paired[i] <- 2}
+if(db$block[i] == 2) {db$block_paired[i] <- 1}
+if(db$block[i] == 3) {db$block_paired[i] <- 4}
+if(db$block[i] == 4) {db$block_paired[i] <- 3}
+if(db$block[i] == 5) {db$block_paired[i] <- 6}
+if(db$block[i] == 6) {db$block_paired[i] <- 5}
+if(db$block[i] == 7) {db$block_paired[i] <- 8}
+if(db$block[i] == 8) {db$block_paired[i] <- 7}  
+if(db$block[i] == 9) {db$block_paired[i] <- 10}
+if(db$block[i] == 10) {db$block_paired[i] <- 9}
+if(db$block[i] == 11) {db$block_paired[i] <- 12}
+if(db$block[i] == 12) {db$block_paired[i] <- 11}  
+if(db$block[i] == 13) {db$block_paired[i] <- 14}
+if(db$block[i] == 14) {db$block_paired[i] <- 13}
+if(db$block[i] == 15) {db$block_paired[i] <- 16}
+if(db$block[i] == 16) {db$block_paired[i] <- 15} 
+}
+
+# identify the list of blocks per each subject
+for (s in unique(db$ID)) {
+b1 <- unique(db$block[db$ID == s]) # outlying blocks
+b2 <- unique(db$block_paired[db$ID == s]) # paired blocks
+blocks <- c(b1, b2) # sum
+
+
+# exclude the blocks
+for (b in blocks) {
+dt_temp <- dt_temp[!(dt_temp$ID== s & dt_temp$block == b), ]
+}
+}
+# save the data for the complementary analysis (lmer) without subject-level exclusions
+dt_lmer <- dt_temp
+
+# number of subjects with all blocks excluded
+length(unique(dt$ID)) - length(unique(dt_temp$ID))
+
+# % of all excluded blocks (outliers and their pairs)
+perc_out_blocks <- (1 - (nrow(dt_temp) / nrow(dt))) * 100
+perc_out_blocks
+
+# create a list of subjects to be excluded
+out_list <- vector() 
+
+# check number and types of preserved blocks per each subject
+for (s in unique(dt_temp$ID)) {
+# optional: print(paste0("ID",s))
+# optional: print(length(unique(dt_temp$block[dt_temp$ID == s]))) #optional
+
+# each subject data
+dsb <- dt_temp[dt_temp$ID == s, ]
+
+# add subject to the list if less than 50% of blocks is present  
+if (length(unique(dt_temp$block[dt_temp$ID == s])) < 8) {out_list[s] <- s} 
+
+# add subject to the list in case of absent data in conditions necessary to run comparisons (ANOVA would automatically discard these subjects)
+ if (length(unique(dsb$block[dsb$walking == "Fast" & dsb$of_speed == "Fast"])) < 1) {out_list[s] <- s} 
+# 
+ if (length(unique(dsb$block[dsb$walking == "Fast" & dsb$of_speed == "Slow"])) < 1) {out_list[s] <- s} 
+# 
+ if (length(unique(dsb$block[dsb$walking == "Slow" & dsb$of_speed == "Slow"])) < 1) {out_list[s] <- s} 
+# 
+ if (length(unique(dsb$block[dsb$walking == "Slow" & dsb$of_speed == "Fast"])) < 1) {out_list[s] <- s} 
+}
+
+# Filter out the subjects with insufficient data 
+out_list <- out_list[!is.na(out_list)]
+for (s in out_list) {
+dt_temp <- dt_temp[!(dt_temp$ID == s),]  
+}
+
+# Number of subjects entering final analysis
+length(unique(dt_temp$ID))
+
+# check how many blocks remained per subject
+num_blocks <- c()
+ for (i in unique(dt_temp$ID)) {
+  sub_blocks <- length(dt_temp$ID[dt_temp$ID == i])
+  num_blocks <- append(num_blocks, sub_blocks)
+ }
+
+# % of participants with all blocks
+(length(which(num_blocks==16)))/length(unique(dt_temp$ID))
+
+# describe % of preserved data
+num_blocks = num_blocks / 16
+describe(num_blocks)
+
+# save consolidated data frame after exclusions
+dt <- dt_temp
+rm(dt_temp)
+
+```
+
+
+<a name="S4"></a>
+&nbsp;
+
+#####**4. Control comparisions: mixed percepts and perceptual transitions** 
+
+
+```{r}
+
+# add return perceptual transitions
+dt$return_alterations <- dt$alterations - dt$full_alterations # all - full transitions
+
+# Select the variables of interest
+dc <- dt %>% group_by(ID, walking) %>% dplyr::summarize(forward = median(forward), non = median(non), alt = median(alterations), f_alt = median(full_alterations), r_alt = median(return_alterations))
+
+# Format data frame
+dc <- pivot_wider(dc, names_from = c(walking), values_from = c(forward, non, alt, f_alt, r_alt))
+
+## (1) Mixed percepts between walking conditions
+
+# distribution tests
+shapiro.test(dc$non_Fast)
+shapiro.test(dc$non_Slow)
+
+# comparison
+wilcoxsign_test(dc$non_Fast ~ dc$non_Slow, paired = T, distribution = "exact")
+
+# statistical description
+mean(dc$non_Fast)
+sd(dc$non_Fast)
+mean(dc$non_Slow)
+sd(dc$non_Slow)
+
+## (2) Full alterations between walking conditions
+
+# distribution tests
+shapiro.test(dc$f_alt_Fast)
+shapiro.test(dc$f_alt_Slow)
+
+# comparison
+wilcoxsign_test(dc$f_alt_Fast ~ dc$f_alt_Slow, paired = T, distribution = "exact")
+
+# statistical description
+mean(dc$f_alt_Fast)
+sd(dc$f_alt_Fast)
+mean(dc$f_alt_Slow)
+sd(dc$f_alt_Slow)
+
+
+## (2) Return alterations between walking conditions
+
+# distribution tests
+shapiro.test(dc$r_alt_Fast)
+shapiro.test(dc$r_alt_Slow)
+
+# comparison
+t.test(dc$r_alt_Fast, dc$r_alt_Slow, paired = T)
+
+# statistical description
+mean(dc$r_alt_Fast)
+sd(dc$r_alt_Fast)
+mean(dc$r_alt_Slow)
+sd(dc$r_alt_Slow)
+
+## Other controlled variables
+# Self-rated confidence of responses during binocular rivalry task
+describe(d_confidence$br_conf) #pre-exclusion sample
+dc <- merge(dc, d_confidence, by = "ID")
+describe(dc$br_conf) #final sample
+
+# overall perceptual measures and confidence rating
+dc <- dt %>% group_by(ID) %>% dplyr::summarize(forward = median(forward), non = median(non), static = median(static),f_alt = median(full_alterations), r_alt = median(return_alterations))
+
+#correlation between full and return alterations
+cor.test(dc$r_alt, dc$f_alt, method = "spearman", exact = F)
+#scatter.smooth(dc$br_conf, dc$f_alt)
+
+# confidence ratings
+dc <- merge(dc, d_confidence, by = "ID")
+describe(dc$br_conf) 
+shapiro.test(dc$br_conf)
+
+
+#mixed percept
+cor.test(dc$br_conf, dc$non, method = "spearman", exact = F)
+#scatter.smooth(dc$br_conf, dc$non)
+
+#forward percept
+cor.test(dc$br_conf, dc$forward, method = "spearman", exact = F)
+#scatter.smooth(dc$br_conf, dc$forward)
+
+#static percept
+cor.test(dc$br_conf, dc$static, method = "spearman", exact = F)
+#scatter.smooth(dc$br_conf, dc$static)
+
+#alterations
+cor.test(dc$br_conf, dc$f_alt, method = "spearman", exact = F)
+#scatter.smooth(dc$br_conf, dc$f_alt)
+
+
+```
+
+<a name="S5"></a>
+&nbsp;
+
+#####**5. Testing the main hypothesis** 
+
+```{r}
+
+### ANOVA Repeated measures (within factors: walking speed & optic flow speed; dependent variable: dominance duration of forward optic flow)
+main_anova <- aov_ez("ID","forward", dt, within=c("walking", "of_speed"), return = afex_options("return_aov"), anova_table = list(), fun_aggregate = median)
+
+# show results
+main_anova 
+summary(main_anova)
+
+# statistical summary 
+ref <- emmeans::emmeans(main_anova, specs = c("walking", "of_speed"))
+ref
+
+# show bonferroni-corrected contrasts (exploratory overview) 
+emmeans::contrast(ref,method="pairwise")
+
+# prepare subjects-level data frame for focused comparisons (next section) 
+ds <- dt %>% group_by(ID, walking, of_speed) %>% dplyr::summarize(forward = median(forward))
+
+### Complementary analysis: mixed linear model (within factors: walking speed & optic flow speed; dependent variable: dominance duration of forward optic flow; random effects: eye & color per each participant) 
+
+# scale depedent variable
+dt_lmer$forward <- scale(dt_lmer$forward)
+
+# fit a linear mixed model with a random slope and intercept for the effects of eye and color for each participant 
+model <- lmer(forward ~ walking * of_speed + (eye|ID) + (color|ID), data = dt_lmer, REML = T)
+summary(model)
+
+# recode "walking speed" and "optic flow speed" into a one factor with four levels (the factors are recoded to simplify defining custom contrasts in the next step # useful source: https://stats.stackexchange.com/questions/168650/how-to-set-custom-contrasts-with-lmer-in-r)
+dt_lmer$con <- with(dt_lmer, interaction(walking, of_speed, sep = "_"))
+
+# show levels
+levels(dt_lmer$con)
+
+# define custom contrasts
+mat <- rbind(c(1, -1, 0, 0),  # faster optic flow different walking conditions
+             c(0, 0, 1, -1))  # slower optic flow; different walking conditions
+
+# compute the generalized inverse
+cMat <- ginv(mat) 
+
+# compute the model with the custom constrasts
+contrasts_model <- lmer(forward ~ con + (eye|ID) + (color|ID), data = dt_lmer, REML = F, contrasts = list(con = cMat))
+
+# show the results  
+coefs <- data.frame(coef(summary(contrasts_model)))
+coefs
+
+```
+
+<a name="S6"></a>
+&nbsp;
+
+#####**6. Perceptual awareness for slower optic flow (planned comparison 1)** 
+
+```{r}
+
+## Hypothesis testing - focused comparison 1
+
+# check normality of distributions
+shapiro.test(ds$forward[ds$of_speed == "Slow" & ds$walking == "Slow"])
+shapiro.test(ds$forward[ds$of_speed == "Slow" & ds$walking == "Fast"])
+
+# perform paired t-test
+t.test(ds$forward[ds$of_speed == "Slow" & ds$walking == "Slow"], ds$forward[ds$of_speed == "Slow" & ds$walking == "Fast"], paired = T, conf.level = 0.95, alternative = "greater")
+
+# effect size
+effsize::cohen.d(ds$forward[ds$of_speed == "Slow" & ds$walking == "Slow"], ds$forward[ds$of_speed == "Slow" & ds$walking == "Fast"], paired = T)
+
+# statistical summary
+describe(ds$forward[ds$of_speed == "Slow" & ds$walking == "Slow"])
+describe(ds$forward[ds$of_speed == "Slow" & ds$walking == "Fast"])
+
+## Plot results
+d <- ds[ds$of_speed == "Slow",]
+d$walking_f[d$walking == "Slow"] <- 1
+d$walking_f[d$walking == "Fast"] <- 2
+d$pos <- jitter(d$walking_f, amount=.035)
+
+### Open-visualizations tutorial for repeated measures in R: https://github.com/jorvlan/open-visualizations/blob/master/R/repmes_tutorial_R.Rmd
+score_mean_1 <- mean(d$forward[d$walking == "Slow"])
+score_mean_2 <- mean(d$forward[d$walking == "Fast"])
+score_median1 <- median(d$forward[d$walking == "Slow"])
+score_median2 <- median(d$forward[d$walking == "Fast"])
+score_sd_1 <- sd(d$forward[d$walking == "Slow"])
+score_sd_2 <- sd(d$forward[d$walking == "Fast"])
+score_se_1 <- score_sd_1/sqrt(length(unique(d$ID))) 
+score_se_2 <- score_sd_2/sqrt(length(unique(d$ID)))
+score_ci_1 <- CI(d$forward[d$walking == "Slow"], ci = 0.95)
+score_ci_2 <- CI(d$forward[d$walking == "Fast"], ci = 0.95)
+
+#Create data frame with 2 rows and 7 columns containing the descriptives
+group <- c("w_slower", "w_faster")
+N <- c(length(unique(d$ID)), length(unique(d$ID)))
+score_mean <- c(score_mean_1, score_mean_2)
+score_median <- c(score_median1, score_median2)
+sd <- c(score_sd_1, score_sd_2)
+se <- c(score_se_1, score_se_2)
+ci <- c((score_ci_1[1] - score_ci_1[3]), (score_ci_2[1] - score_ci_2[3]))
+
+#Create the dataframe
+summary_df <- data.frame(group, N, score_mean, score_median, sd, se, ci)
+
+for (i in unique(d$ID))
+{
+fst<- d$forward[d$ID == i & d$walking == "Fast"]
+slw <- d$forward[d$ID == i & d$walking == "Slow"] 
+d$opt_diff_direction[d$ID == i] <- (slw - fst) > 0
+}
+
+d$opt_diff_direction <- ordered(d$opt_diff_direction, levels = c("FALSE", "TRUE"))
+
+# colors
+ col1 <- "#d1ab02"
+ col2 <- "#7a7696"
+
+f1 <- ggplot(data = d, aes(y = forward)) +
+  
+  #Add geom_() objects
+  geom_half_boxplot(
+    data = d %>% filter(walking_f=="1"), aes(x=walking_f, y = forward), position = position_nudge(x = -.25), 
+    side = "r",outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, 
+    fill = scales::alpha(col1,0.9)) +
+  
+  geom_half_boxplot(
+    data = d %>% filter(walking_f=="2"), aes(x=walking_f, y = forward), position = position_nudge(x = .15), 
+    side = "r",outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, 
+    fill = scales::alpha(col2,0.9)) +
+  
+  geom_line(aes(x = pos, group = ID, col = as.factor(opt_diff_direction)), position = position_nudge(x = c(0.04,-0.04))) + scale_color_manual(values=c(scales::alpha(col2,0.5), scales::alpha(col1,0.5))) +
+    geom_point(data = d %>% filter(walking_f =="1"), aes(x = pos), color = col1, size = 1.7, alpha = .6, position = position_nudge(x = 0.04)) +
+  geom_point(data = d %>% filter(walking_f =="2"), aes(x = pos), color = col2, size = 1.7, alpha = .6, position = position_nudge(x = -0.04)) +
+  
+  geom_half_violin(
+    data = d %>% filter(walking_f=="1"),aes(x = walking_f, y = forward), position = position_nudge(x = -.3), width = 0.65,
+    side = "l", fill = scales::alpha(col1,0.9)) +
+  
+  geom_half_violin(
+    data = d %>% filter(walking_f=="2"),aes(x = walking_f, y = forward), position = position_nudge(x= .3), width = 0.65,
+    side = "r", fill = scales::alpha(col2,0.9)) +
+
+   geom_point(data = d %>% filter(walking_f=="1"), aes(x = walking_f, y = score_mean[1]), 
+     position = position_nudge(x = -.07), color = col1, alpha = .6, size = 4.1) +
+  
+   geom_errorbar(data = d %>% filter(walking_f=="1"), aes(x = walking_f, y = score_mean[1], 
+     ymin = score_ci_1[3], ymax = score_ci_1[1]), 
+     position = position_nudge(-.07), 
+     color = col1, width = 0.05, size = 0.7, alpha = .5) + 
+  
+   geom_point(data = d %>% filter(walking_f=="2"), aes(x = walking_f, y = score_mean[2]), 
+    position = position_nudge(x = .07), color = col2, alpha = .5, size = 4.1)+ 
+ 
+   geom_errorbar(data = d %>% filter(walking_f=="2"), aes(x = walking_f, y = score_mean[2], 
+    ymin = score_ci_2[3], ymax = score_ci_2[1]), 
+    position = position_nudge(.07), color = col2, 
+    width = 0.05, size = 0.7, alpha = .5) +
+  
+  #Define additional settings
+  scale_x_continuous(breaks=c(1,2), labels=c("Slower", "Faster")) +
+  xlab("Walking speed") + ylab("Slower optic flow dominance (%)") +
+  ggtitle(' ') +
+  theme_classic()+
+  coord_cartesian(ylim=c(0, 80)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"), axis.title = element_text(face="bold",size=12, colour = "black"), axis.text = element_text(face="bold",size=17.5, colour = "black"), legend.position = "none")
+
+f1 # export size: 5 x 6
+
+```
+
+<a name="S7"></a>
+&nbsp;
+
+#####**7. Perceptual awareness for faster optic flow (planned comparison 2)** 
+
+```{r}
+
+## Hypothesis testing - focused comparison 2
+
+# check normality of distributions
+shapiro.test(ds$forward[ds$of_speed == "Fast" & ds$walking == "Fast"])
+shapiro.test(ds$forward[ds$of_speed == "Fast" & ds$walking == "Slow"])
+
+# perform paired t-test
+t.test(ds$forward[ds$of_speed == "Fast" & ds$walking == "Fast"], ds$forward[ds$of_speed == "Fast" & ds$walking == "Slow"], paired = T, conf.level = 0.95, alternative = "greater")
+
+# optional: non-parametric alternative
+#wilcoxsign_test(ds$forward[ds$of_speed == "Fast" & ds$walking == "Fast"] ~ ds$forward[ds$of_speed == "Fast" & ds$walking == "Slow"], paired = T, distribution = "exact", alternative = "greater")
+
+# effect size
+effsize::cohen.d(ds$forward[ds$of_speed == "Fast" & ds$walking == "Fast"], ds$forward[ds$of_speed == "Fast" & ds$walking == "Slow"], paired = T)
+
+# statistical summary
+describe(ds$forward[ds$of_speed == "Fast" & ds$walking == "Slow"])
+describe(ds$forward[ds$of_speed == "Fast" & ds$walking == "Fast"])
+
+
+## Plot results
+
+d <- ds[ds$of_speed == "Fast",]
+d$walking_f[d$walking == "Slow"] <- 1
+d$walking_f[d$walking == "Fast"] <- 2
+d$pos <- jitter(d$walking_f, amount=.035)
+
+score_mean_1 <- mean(d$forward[d$walking == "Slow"])
+score_mean_2 <- mean(d$forward[d$walking == "Fast"])
+score_median1 <- median(d$forward[d$walking == "Slow"])
+score_median2 <- median(d$forward[d$walking == "Fast"])
+score_sd_1 <- sd(d$forward[d$walking == "Slow"])
+score_sd_2 <- sd(d$forward[d$walking == "Fast"])
+score_se_1 <- score_sd_1/sqrt(length(unique(d$ID))) 
+score_se_2 <- score_sd_2/sqrt(length(unique(d$ID)))
+score_ci_1 <- CI(d$forward[d$walking == "Slow"], ci = 0.95)
+score_ci_2 <- CI(d$forward[d$walking == "Fast"], ci = 0.95)
+
+#Create data frame with 2 rows and 7 columns containing the descriptives
+group <- c("w_slower", "w_faster")
+N <- c(length(unique(d$ID)), length(unique(d$ID)))
+score_mean <- c(score_mean_1, score_mean_2)
+score_median <- c(score_median1, score_median2)
+sd <- c(score_sd_1, score_sd_2)
+se <- c(score_se_1, score_se_2)
+ci <- c((score_ci_1[1] - score_ci_1[3]), (score_ci_2[1] - score_ci_2[3]))
+
+#Create the dataframe
+summary_df <- data.frame(group, N, score_mean, score_median, sd, se, ci)
+
+
+for (i in unique(d$ID))
+{
+fst<- d$forward[d$ID == i & d$walking == "Fast"]
+slw <- d$forward[d$ID == i & d$walking == "Slow"] 
+d$opt_diff_direction[d$ID == i] <- (fst - slw) > 0
+}
+
+#factor(d$opt_diff_direction)
+d$opt_diff_direction <- ordered(d$opt_diff_direction, levels = c("FALSE", "TRUE"))
+
+
+f1 <- ggplot(data = d, aes(y = forward)) +
+  
+    geom_half_boxplot(
+    data = d %>% filter(walking_f=="1"), aes(x=walking_f, y = forward), position = position_nudge(x = -.25), 
+    side = "r",outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, 
+    fill = scales::alpha(col2,0.9)) +
+  
+  geom_half_boxplot(
+    data = d %>% filter(walking_f=="2"), aes(x=walking_f, y = forward), position = position_nudge(x = .15), 
+    side = "r",outlier.shape = NA, center = TRUE, errorbar.draw = FALSE, width = .2, 
+    fill = scales::alpha(col1,0.9)) +
+   
+   geom_line(aes(x = pos, group = ID, col = as.factor(opt_diff_direction)), position = position_nudge(x = c(0.04,-0.04))) + scale_color_manual(values=c(scales::alpha(col2,0.5), scales::alpha(col1,0.5))) + 
+  
+  geom_point(data = d %>% filter(walking_f =="1"), aes(x = pos), color = col2, size = 1.7, alpha = .6, position = position_nudge(x = 0.04)) +
+  
+  geom_point(data = d %>% filter(walking_f =="2"), aes(x = pos), color = col1, size = 1.7, alpha = .6, position = position_nudge(x = -0.04)) +
+
+  geom_half_violin(
+    data = d %>% filter(walking_f=="1"),aes(x = walking_f, y = forward), position = position_nudge(x = -.3), width = 0.65,
+    side = "l", fill = scales::alpha(col2,0.9)) +
+  
+  geom_half_violin(
+    data = d %>% filter(walking_f=="2"),aes(x = walking_f, y = forward), position = position_nudge(x= .3), width = 0.65,
+    side = "r", fill = scales::alpha(col1,0.9)) +
+
+   geom_point(data = d %>% filter(walking_f=="1"), aes(x = walking_f, y = score_mean[1]), 
+     position = position_nudge(x = -.07), color = col2, alpha = .6, size = 4.1) +
+  
+   geom_errorbar(data = d %>% filter(walking_f=="1"), aes(x = walking_f, y = score_mean[1], 
+     ymin = score_ci_1[3], ymax = score_ci_1[1]), 
+     position = position_nudge(-.07), 
+     color = col2, width = 0.05, size = 0.7, alpha = .5) + 
+  
+   geom_point(data = d %>% filter(walking_f=="2"), aes(x = walking_f, y = score_mean[2]), 
+    position = position_nudge(x = .07), color = col1, alpha = .5, size = 4.1)+ 
+ 
+   geom_errorbar(data = d %>% filter(walking_f=="2"), aes(x = walking_f, y = score_mean[2], 
+    ymin = score_ci_2[3], 
+    ymax = score_ci_2[1]), position = position_nudge(.07), color = col1, 
+    width = 0.05, size = 0.7, alpha = .5) +
+  
+  #Define additional settings
+  scale_x_continuous(breaks=c(1,2), labels=c("Slower", "Faster")) +
+  xlab("Walking speed") + ylab("Faster flow dominance (%)") +
+  ggtitle(' ') +
+  theme_classic()+
+  coord_cartesian(ylim=c(0, 80)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"), axis.title = element_text(face="bold",size=12, colour = "black"), axis.text = element_text(face="bold",size=17.5, colour = "black"), legend.position = "none")
+
+f1 # export size: 5 x 6
+
+```
+
+
+<a name="S8"></a>
+&nbsp;
+
+#####**8. Relation between optimality effects and proprioceptive sensitivity** 
+
+```{r}
+
+# trasform data frame
+ds <- dt %>% group_by(ID, of_speed, walking) %>% dplyr::summarize(forward = median(forward))
+
+# renaming factor levels
+ds$walking <- plyr::revalue(ds$walking, c("Slow" = "w_slow", "Fast" = "w_fast"))
+ds$of_speed <- plyr::revalue(ds$of_speed, c("Slow" = "of_slow", "Fast" = "of_fast"))
+
+# from long to wide format
+d <- pivot_wider(ds, names_from = c(of_speed, walking), values_from = c(forward))
+
+## Calculate optimality effects/measures
+
+# (1) difference between perception of slower optic flow while walking slower and faster
+d$opt_slow <- d$of_slow_w_slow - d$of_slow_w_fast
+#hist(d$opt_slow)
+
+# (2) difference between perception of faster optic flow while walking faster and slower
+d$opt_fast <- d$of_fast_w_fast - d$of_fast_w_slow
+#hist(d$opt_fast)
+
+# overall optimality effect 
+d$opt_overall <- (d$opt_fast + d$opt_slow) / 2
+#hist(d$opt_overall)
+
+# correlation between optimality effects
+shapiro.test(d$opt_fast)
+shapiro.test(d$opt_slow)
+cor.test(d$opt_slow, d$opt_fast, method = "pearson")
+
+# plot relation between optimality effects at different visual conditions
+bold.text <- element_text(face = "bold", color = "black")
+
+fig <- ggplot(data = d, aes(x = opt_slow, y = opt_fast)) + 
+  geom_smooth(col = "grey8", method = "lm", level=0.95, alpha = 0.5) + 
+  geom_point(col = "grey 15", alpha = 0.6, size = 3, shape = 19) + 
+  labs(x = "Optimality effect (slower optic flow)", y = "Optimality effect (faster optic flow)") + 
+  scale_fill_manual() + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 19), axis.text=element_text(size=18),  axis.title=element_text(size=18), axis.title.y = element_text(margin = margin(t = 0, r = 7, b = 0, l = 0), hjust= 0.35), axis.title.x =   element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), hjust= 0.3)) + 
+  scale_y_continuous(limits= c(-21, 26), breaks = c(-20,-10,0,10,20), expand = c(0.01,0.01)) + 
+  scale_x_continuous(limits= c(-21, 23), breaks = c(-20,-10,0,10,20), expand = c(0.01,0.01)) +
+  theme(axis.title = bold.text)
+
+fig  # export size: 5 x 7 cm
+
+## Sensitivity in walking change detection task and optimality effects
+d <- merge(d, dt_walking, by = "ID")
+
+# correlation between sensitivity and optimality (slower optic flow)
+shapiro.test(d$s)
+shapiro.test(d$opt_slow)
+cor.test(d$s, d$opt_slow, method = "spearman", exact = F, alternative = "greater")
+
+# correlation between sensitivity and optimality (faster optic flow)
+shapiro.test(d$s)
+shapiro.test(d$opt_fast)
+cor.test(d$s, d$opt_fast, method = "spearman",exact = F, alternative = "greater")
+
+# plot correlation between sensitivity and optimality effects
+dp <- dplyr::select(d, ID, opt_fast, opt_slow, s)
+dp <- gather(dp, key = of_speed, value = opt, -ID, -s)
+
+col1 <- darken("#FDE725FF", amount = 0.56)
+col2 <- darken("#FDE725FF", amount = 0.23)
+
+## visualize the relation between variables
+proprio_cor_plot <- ggplot(data = dp, aes(x = s, y = opt, colour = of_speed)) +  geom_smooth(method = "lm", level=0.95, alpha = 0.15, aes(fill=of_speed)) + geom_point(alpha = 0.6, size = 4, shape = 20) +  labs(y = "Optimality effect (%)", x = "Perceptual sensitivity") + scale_color_manual(values = c('opt_slow' = col2, 'opt_fast' = col1)) + scale_fill_manual(values = c('opt_slow' = col2, 'opt_fast' = col1)) + theme(panel.grid.minor = element_blank(),panel.grid.major = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black"), axis.text = element_text(face="bold",size=18, colour = "black"), axis.title = element_text(face="bold",size=13, colour = "black"))
+
+# exported manually: size 5 x 7
+proprio_cor_plot
+
+d_percepts <- dt %>% group_by(ID) %>% dplyr::summarize(forward = median(forward), non = median(non), static = median(static), alt = median(alterations), f_alt = median(full_alterations))
+
+d <- merge(d, d_percepts, by = "ID")
+cor.test(d$s, d$forward, method = "spearman", exact = F)
+
+# participants data - sample after exclusions
+describe(d$Age)
+length(d$ID[d$Gender == "W"])
+
+```
+
+<a name="S9"></a>
+&nbsp;
+
+#####**9. Relation between optimality effects and performance in determination of optic flow speeds** 
+
+
+```{r}
+
+# merge data frames
+d <- merge(d, dt_speed, by = "ID")
+
+### Association between optimality of visual perception and the discrepancy between slow and fast optic flow speeds
+
+# check normality of distributions
+shapiro.test(d$opt_overall)
+shapiro.test(d$diff_walking_speed)
+# correlation test
+cor.test(d$diff_walking_speed, d$opt_overall, method = "spearman", exact = F)
+#scatter.smooth(d$diff_walking_speed, d$opt_overall, col = "dodgerblue4", cex = 2, pch = 20)
+
+### Association between optimality of visual perception and the speed of optic flows
+
+## Overall
+# check normality of distributions
+shapiro.test(d$opt_overall)
+shapiro.test(d$of_speed)
+# correlation test
+cor.test(d$of_speed, d$opt_overall, method = "spearman")
+#scatter.smooth(d$of_speed, d$opt_overall, col = "dodgerblue4", cex = 2, pch = 20)
+
+## Slower optic flow
+# check normality of distributions
+shapiro.test(d$opt_slow)
+shapiro.test(d$mS)
+# correlation test
+cor.test(d$mS, d$opt_slow, method = "pearson")
+#scatter.smooth(d$mS, d$opt_slow, col = "dodgerblue4", cex = 2, pch = 20)
+
+## Faster optic flow
+# check normality of distributions
+shapiro.test(d$opt_fast)
+shapiro.test(d$mF)
+# correlation test
+cor.test(d$mF, d$opt_fast, method = "spearman", exact = F)
+#scatter.smooth(d$mF, d$opt_fast, col = "dodgerblue4", cex = 2, pch = 20)
+
+### Association between optimality effects and variance of optic flow speed estimates
+
+## Overall
+# check normality of distributions
+shapiro.test(d$opt_overall)
+shapiro.test(d$of_variance)
+#correlation test
+cor.test(d$of_variance, d$opt_overall, method = "spearman", exact = F)
+#scatter.smooth(d$of_variance, d$opt_overall, col = "dodgerblue4", cex = 2, pch = 20)
+
+## Slower optic flow
+# check normality of distributions
+shapiro.test(d$opt_slow)
+shapiro.test(d$sdS)
+#correlation test
+cor.test(d$sdS, d$opt_slow, method = "spearman", exact = F)
+#scatter.smooth(d$sdS, d$opt_slow, col = "dodgerblue4", cex = 2, pch = 20)
+
+## Faster optic flow
+shapiro.test(d$opt_fast)
+shapiro.test(d$sdF)
+#correlation test
+cor.test(d$sdF, d$opt_fast, method = "spearman", exact = F)
+#scatter.smooth(d$sdF, d$opt_fast, col = "dodgerblue4", cex = 2, pch = 20)
+
+```
+
